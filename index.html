@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>CSV Bubble Plotter</title>
+        <link rel="icon" type="image/png" href="favicon.ico">
+        <script type="text/javascript" src="libs/d3/d3.min.js"></script>
+        <script type="text/javascript" src="libs/crossfilter/crossfilter.js"></script>
+        <script type="text/javascript" src="libs/dc.js-2.0.0-beta.19/dc.min.js"></script>
+        <link href='libs/dc.js-2.0.0-beta.19/dc.css' rel='stylesheet' type='text/css'>
+        <link href='libs/Ladda/dist/ladda.min.css' rel='stylesheet' type='text/css'>
+        <link href='libs/stroll/css/stroll.css' rel='stylesheet' type='text/css'>
+
+        <link href='https://fonts.googleapis.com/css?family=Roboto:400,300,100,700,900,500,100italic,300italic,400italic,500italic,700italic,900italic|Roboto+Condensed:400,300,700,300italic,400italic,700italic|Roboto+Mono:400,100,300,500,700,100italic,300italic,400italic,500italic,700italic' rel='stylesheet' type='text/css'>
+
+        <style type="text/css">
+            html,
+            body {
+                padding: 0;
+                margin: 0;
+            }
+            body {
+                //background-color: rgb(220, 159, 180);
+                //background-color: #FFFFFB;
+                font-family: 'Roboto';
+                background-color: #222;
+                background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAGklEQVQIW2NkYGD4D8SMQAwGcAY2AbBKDBUAVuYCBQPd34sAAAAASUVORK5CYII=);
+                background-repeat: repeat;
+                overflow: hidden;
+            }
+
+            .layerWrap {
+                position: absolute; /* so each layer overlaps on top of one another. */
+                width:100%;
+                height:100%;    /* so that its height doesn't extend which prevents scrolling. */
+                bottom:0;   /* for animation to have start/end value. */
+                overflow: hidden;   /* Doesn't scroll because want page handle always at bottom. */
+                -webkit-transition: all 0.5s ease;
+            }
+            .kami .layer {
+                position: absolute; /* relative to .layerWrap. appended by page handle. */
+                width: 100%;
+                height: calc(100% - 40px);
+                margin-top:20px; /* space for previous page handle */
+                //min-height: 95%;
+                z-index:0;
+                overflow: auto;
+            }
+            .kami .layer.cover {
+                height:calc(100% - 20px);
+                margin-top:0;   /* cover page has no previous page handle */
+            }
+            .kami .layer.topHalf {
+                height:calc(62% - 20px);
+                top:0;
+                //resize: vertical; //can add resize handle div.
+            }
+            .kami .layer.bottomHalf {
+                height:calc(38% - 20px);
+                top:calc(62% - 20px);
+                background: #7B90D2;
+            }
+            .kami .layerWrap.stacked {
+                //position: absolute;
+                bottom: calc(100% - 20px);
+                z-index:6;  /* needed to that stacked pages are in order */
+            }
+            .layer {
+                text-align: center;
+                text-shadow: 1px 1px 0px rgba( 0, 0, 0, 0.1 );
+            }
+
+            .layer h2, .fileInput {
+                font-size: 6.25em;
+            }
+
+            .layer h2, .layer p, .fileInput {
+                position: relative;
+                top: 30%;
+                margin: 0;
+            }
+            .layer.one {
+                background-image:url(images/textureNippon.png);
+                background-attachment: local;
+            }
+            .layer.two {
+                background-image:url(images/textureNippon.png);
+                background-attachment: local;
+            }
+            .layer.three {
+                background-image:url(images/textureNippon.png);
+                background-attachment: local;
+            }
+            .one {  /* applies to both .layer.one and .layerWrap.one */
+                background: #FFFFFB;
+                z-index:5;
+            }
+            .two {
+                color: white;
+                background: #3A8FB7;
+                z-index:4;
+            }
+            .three {
+                background: #FFFFFB;
+                z-index:3;
+            }
+            .pageHandles {
+                position: absolute;
+                width:100%;
+                height:20px;
+                bottom:0;
+                //background-color:red;
+            }
+            .one .pageHandles {
+                background-color:grey;
+                opacity: 0.2
+            }
+            .two .pageHandles {
+                background-color:grey;
+                opacity: 0.2
+            }
+            .three .pageHandles {
+                background-color:grey;
+                opacity: 0.2
+            }
+
+        </style>
+        <style type="text/css">
+
+            .axis path,
+            .axis line {
+                fill: none;
+                stroke: black;
+                shape-rendering: crispEdges;
+            }
+            .axis text {
+                font-family: sans-serif;
+                font-size: 11px;
+            }
+            
+        </style>
+        <style>
+            #pageTitle {
+                font-weight:300;
+                font-size:46px;
+                color:#577C8A;
+                text-shadow:1px 2px 4px rgba(0,0,0,0.2);
+            }
+            #pageSubTitle {
+                font-weight:100;
+                font-size:20px;
+                color:#577C8A;
+                text-shadow:1px 2px 4px rgba(0,0,0,0.2);
+            }
+
+            button {
+                font-family:'Roboto', serif;
+                box-shadow:    1px 1px 1px 0 rgba(0,0,0,0.2);
+                -webkit-animation: shadowFade 1s 1 ease-out;
+                animation: shadowFade 1s 1 ease-out;
+                outline:0;
+                border: none;
+            }
+            button:hover, button:active, button:focus {
+                box-shadow:0 8px 16px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
+                //outline:0;
+            }
+
+            #btnLoadFile {
+                //font-family:'Roboto', serif;
+                font-weight:300;
+                font-size:32px;
+                background:#7DB9DE;
+                //box-shadow:    1px 1px 1px 0 rgba(0,0,0,0.2);
+                //-webkit-animation: shadowFade 1s 1 ease-out;
+                //animation: shadowFade 1s 1 ease-out;
+                //background:url(/images/textureNippon.png) no-repeat left;
+            }
+            #btnSampleDownload {
+                font-size:18px;
+            }
+            /*
+           #btnLoadFile:hover, #btnLoadFile:active, #btnLoadFile:focus {
+                box-shadow:0 8px 16px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
+                outline:0;
+            }
+            */
+            .SummaryButton {
+                background:#656765;
+                color:white;
+            }
+            /*
+            .float-button {
+                box-shadow:0 12px 24px 0 rgba(0,0,0,0.2);
+            }
+            */
+            @-webkit-keyframes shadowFade {
+                0%  {box-shadow:    4px 12px 16px 0 rgba(0,0,0,0.3);}
+                75%  {box-shadow:    1px 2px 2px 0 rgba(0,0,0,0.2);}
+            }
+            @keyframes shadowFade {
+                0%  {box-shadow:    4px 12px 16px 0 rgba(0,0,0,0.3);}
+                75%  {box-shadow:    1px 2px 2px 0 rgba(0,0,0,0.2);}
+            }
+            /*
+            .stroll {
+                height: 400px;
+                overflow: auto;
+            }
+            */
+            ul.stroll {
+                position: relative;
+                width: 230px;
+                height: 480px;
+                margin: 0;
+                padding: 0;
+                overflow-x: hidden;
+                overflow-y: scroll;
+                list-style: none;
+
+                -webkit-perspective: 400px;
+                -moz-perspective: 400px;
+                    -ms-perspective: 400px;
+                    -o-perspective: 400px;
+                        perspective: 400px;
+            }
+                ul.stroll li {
+                        position: relative;
+                        padding: 16px;
+                        background: #eee;
+                        color: #252525;
+                        font-size: 18px;
+                        z-index: 2;
+
+                        -webkit-transform: translateZ(0px);
+                        -moz-transform: translateZ(0px);
+                            -ms-transform: translateZ(0px);
+                            -o-transform: translateZ(0px);
+                                transform: translateZ(0px);
+                }
+                ul.stroll li:nth-child(odd) {
+                        background: #fff;
+                }
+        </style>
+
+    </head>
+
+    <body>
+        <!--
+        <div id="bgWrap"></div>
+        -->
+        <div id="bodyWrap" class="kami">
+            <div class='kami layerWrap one'>
+                <div id='coverLayer' class="layer one cover">
+                    <h2 id='pageTitle'>CSV Bubble Plotter</h2>
+                    <h2 id='pageSubTitle'>powered by D3.js</h2>
+                    <section class="fileInput">
+                        <button id='btnLoadFile' class='ladda-button' onclick="passClickToInput()"
+                            data-style='zoom-in' data-size='l' 
+                            data-spinner-lines='17' data-spinner-color="#8E354A">
+                                <span class='ladda-label'>Open File</span>
+                        </button>
+                        <div style='height:0px; width:0px; overflow:hidden;'>
+                            <input type="file" id="filesInput" name="file" accept=".csv" />
+                        </div>
+                        <form action='winequality-red.csv'>
+                            <button id='btnSampleDownload' class='ladda-button'
+                                data-style='zoom-in' data-size='l' 
+                                data-spinner-lines='17' data-spinner-color="#8E354A">
+                                    <span class='ladda-label'>Download a Sample File</span>
+                            </button>
+                        </form>
+                    </section>
+                </div>
+                <div class='pageHandles' onclick="toggleStack(event)"></div>
+            </div>
+
+            <div class='kami layerWrap two'>
+                <div id='summaryLayer' class="layer two topHalf">
+                </div>
+                <div id='listLayer' class="layer two bottomHalf">
+                </div>
+                <div class='pageHandles' onclick="toggleStack(event)"></div>
+            </div>
+
+            <div class='kami layerWrap three'>
+                <div id='chartLayer' class="layer three">
+                </div>
+            </div>
+        </div>
+
+        <script src="libs/Ladda/dist/spin.min.js"></script>
+        <script src="libs/Ladda/dist/ladda.min.js"></script>
+        <!-- <script src="../stroll/js/stroll.min.js"></script> -->
+        <script src="src/formulaParser.js"></script>
+
+        <script type = "text/javascript">
+
+        setTimeout(function() {
+            //document.getElementById('btnLoadFile').className='ladda-button';
+        }, 150);
+
+        function passClickToInput() {
+            document.getElementById("filesInput").click();
+        }
+
+        var toType = function(obj) {
+            return ({}).toString.call(obj).match(/\s([a-zA-Z]+)/)[1].toLowerCase()
+        };
+        //console.log(toType ("asdf"));
+        function isNum(x) { return !isNaN(x);}
+
+        function isInt(str) {
+            return /^\-?([0-9]\d*)$/.test(str);
+        }
+
+        function roundTo (n, p) {
+            //return Math.round(n*Math.pow(10,p))/Math.pow(10,p);
+            return (~~(n*Math.pow(10,p)))/Math.pow(10,p);
+        }
+
+        function showRounded(n) {
+            if (isNaN(n)) {
+                return n;
+            } else {
+                if (n >= 1000 || n <= -1000) {
+                    return ~~n;
+                } else if (n*n < 0.01) {
+                    return roundTo(n, 4);
+                } else if (n*n < 100) {
+                    return roundTo(n, 3);
+                } else {
+                    return roundTo(n, 1);
+                };
+            };
+        }
+
+        var reader;
+        var progress = document.querySelector('.percent');
+        var demoSelected = false;
+
+        document.getElementById('filesInput').addEventListener('change', handleFileSelect, false);
+
+        /////////////// FileReader Setup //////////////
+
+        var l = Ladda.create(document.querySelector('#btnLoadFile'));
+
+        /*  let's not mess with touch controls yet
+        document.addEventListener( 'keyup', function( event ) {
+            if( event.keyCode === 37 ) k.prev();
+            if( event.keyCode === 39 ) k.next();
+        }, false );
+
+        var touchX = 0;
+        var touchConsumed = false;
+
+        document.addEventListener( 'touchstart', function( event ) {
+                touchConsumed = false;
+                lastX = event.touches[0].clientX;
+        }, false );
+
+        document.addEventListener( 'touchmove', function( event ) {
+                event.preventDefault();
+
+                if( !touchConsumed ) {
+                        if( event.touches[0].clientX > lastX + 10 ) {
+                                k.prev();
+                                touchConsumed = true;
+                        }
+                        else if( event.touches[0].clientX < lastX - 10 ) {
+                                k.next();
+                                touchConsumed = true;
+                        }
+                }
+        }, false );
+        */
+
+        function abortRead() { reader.abort(); }
+
+        function errorHandler(evt) {
+            switch (evt.target.error.code) {
+                case evt.target.error.NOT_FOUND_ERR:
+                    alert('File Not Found!');
+                    break;
+                case evt.target.error.NOT_READABLE_ERR:
+                    alert('File is not readable');
+                    break;
+                case evt.target.error.ABORT_ERR:
+                    break;
+                default:
+                    alert('An error occurred reading this file.');
+            };
+        }
+
+        function handleFileSelect(evt) {
+
+            //if (evt.target.files[0].type.match(/text.*/)) {
+
+            reader = new FileReader();
+            reader.onerror = errorHandler;
+            reader.onprogress = function (evt) {
+                if (evt.lengthComputable) {
+                    l.setProgress(0.2*roundTo(evt.loaded / evt.total, 2));
+                };
+            };
+            reader.onabort = function (e) { alert('File read cancelled'); l.stop();};
+            reader.onloadstart = function (e) {
+                l.start()
+            };
+
+            // FileReader.onload callback for when the loading is finished.
+            reader.onload = function (e) {
+                /*
+                setTimeout(function() {
+                    var coverLayerID = document.getElementById('coverLayer');
+                    coverLayerID.parentNode.removeChild(coverLayerID);
+                },500);
+                */
+
+                l.setProgress(0.2);
+                setTimeout(function() {
+                    var csv = d3.csv.parse(reader.result);
+                    //console.log(csv);
+                    l.setProgress(0.3);
+                    setTimeout(function() {calcAndDraw(false,csv);}, 20);
+                }, 80);
+            }
+
+            //Read in the file as text
+            reader.readAsText(evt.target.files[0]);
+            if (evt.target.files[0].name == 'winequality-red.csv') demoSelected = true;
+
+            //} else {
+                //alert ('Please select a text file!');
+            //}
+
+        }
+
+
+        function strToID(str) {return str.replace(/ /g, "_").replace(/[()]/g,"");}
+
+        function scrollIntoView(eleID) {
+            var e = document.getElementById(eleID);
+            if (!!e && e.scrollIntoView) {
+                e.scrollIntoView();
+            };
+        }
+
+        /*
+        bodyWrap.addEventListener("scroll", function(e) {
+            console.log("bodyWrap offset " + document.getElementById("bodyWrap").scrollTop);
+            console.log("cover offset " + document.getElementById("coverLayer").scrollTop);
+            console.log("body" + document.body.scrollTop);
+            if (this.scrollTop > 0.99*(cover.scrollHeight)) {
+                cover.classList.add("stacked");
+            } else {
+                cover.classList.remove("stacked");
+            };
+        });
+        */
+
+        var cover = document.getElementById("coverLayer");
+        //cover.addEventListener("click", toggleStack);
+        function toggleStack(e) {
+            var target = (e.target) ? e.target : e.srcElement;
+            console.log(target.parentNode.classList);
+            target.parentNode.classList.toggle("stacked");
+        }
+
+        function workerFarm(workerJS, xs, nestStep, uiSend, uiReceive) {
+            //var arg_pass = feeds[0];    // arg_pass directly passed to nextStep.
+            //var xs = feeds[1];          // xs goes through deep copy to worker farm.
+            var n = xs.length;
+            var results = new Array(n);
+            var workersDone = Array(1+n).join(1).split('').map(function(){return false;});
+            
+            for (var i=0; i<n; i++) {
+                uiSend([i,xs[i]]);
+                var worker = new Worker(workerJS);
+                worker.postMessage([i,xs[i]]);
+                console.log('Message posted to WebWorker ' + workerJS + ' #' + i);
+
+                worker.onmessage = function(e) {
+                    var j = e.data[0];
+                    console.log('Results received from WebWoker ' + workerJS + ' #' + j);
+                    results[j] = e.data[1];
+                    workersDone[j] = true;
+                    var workersDoneNum = workersDone.filter(identity).length;
+                    uiReceive(workersDoneNum, e.data);
+                    //worker.terminate();
+
+                    if (workersDone.every(identity)) {
+                        nestStep(results);
+                    };
+                };
+            };
+        }
+
+        //function first(f) {return f;}
+
+        ///////////////// D3 Setup //////////////////
+
+        function calcAndDraw(err,csv) {
+
+            if (err) throw err;
+
+            var cols = d3.keys(csv[0]);
+            var rowCount = csv.length
+            var csvCols = cols.map(function(c) {
+                return csv.map(pickCol(c));
+            });
+
+            workerFarm('src/workerColumnSummary.js',
+                        csvCols,
+                        function(r) {
+                            l.stop();
+                            var csvSummary = [cols, rowCount, r];
+                            drawSummary(csv, csvSummary);
+                            //drawTriangles(csv, csvSummary);
+                            setTimeout(function() {
+                                scrollIntoView('summaryLayer');
+                                document.getElementById('coverLayer')
+                                    .parentNode.classList.add('stacked');
+                            },0);
+                            //setTimeout(function() {drawAllCharts(csv, csvSummary);},10);
+                        },
+                        function(x) {
+                            var prg = (0.3+0.1*roundTo((x[0]+1)/cols.length, 2));
+                            //console.log(prg);
+                            l.setProgress(prg);
+                        },
+                        function(n, x) {
+                            var prg = (0.4+0.6*roundTo(n/cols.length, 2));
+                            //console.log(prg);
+                            l.setProgress(prg);
+                        });
+
+        }
+
+        function pickCol (colName) {
+            return (function (d) { return d[colName];});
+        }
+
+        function drawSummary(csv, csvSummary) {
+            
+            var divLists = d3.select("#listLayer")
+                .append("div")
+                .attr("id", "variable-selection-div")
+                .style("margin-top","20px")
+                .style("margin-left","20px");
+            divLists.append("h3").text("Please enter formula for continuous variables for graphing \n(Append '/ [rowCount]' for row average)");
+
+            var eachListDiv = divLists
+                .selectAll("div")
+                .data(["X Axis", "Y Axis", "Radius", "Color"])
+                .enter()
+                .append("div");
+                //.style("width", "500px")
+                //.style("text-align", "left");
+                //.style("float", "right");
+
+            eachListDiv.append("h4").text(identity);
+            var eachDimInput = eachListDiv
+                .append("input")
+                .attr("type", "text")
+                .attr("name", identity)
+                .attr("id", function(d) {return 'input-' + strToID(d);})
+                .style("width", "calc(500px + 25%)")
+                .attr('value', function(d,i) {
+                    demoVars = ['[alcohol] / [rowCount]',  '[quality] / [rowCount]', '[residual sugar] / [rowCount]', '[pH] / [rowCount]'];
+                    if (demoSelected) {
+                        return demoVars[i];
+                    }
+                });
+
+            divLists
+                .append('button')
+                .text('Draw')
+                .attr('class', 'SummaryButton')
+                .style('margin-top', '50px')
+                .style('width', '100px')
+                .style('height', '50px')
+                .on('click', function() {
+                    var xFormulaStr = document.getElementById('input-' + strToID('X Axis')).value;
+                    var yFormulaStr = document.getElementById('input-' + strToID('Y Axis')).value;
+                    var rFormulaStr = document.getElementById('input-' + strToID('Radius')).value;
+                    var cFormulaStr = document.getElementById('input-' + strToID('Color')).value;
+
+                    var selCols = (findAll(squareBracketedWords)(xFormulaStr+yFormulaStr
+                                                                +rFormulaStr+cFormulaStr)).parsed;
+                    console.log(selCols);
+
+                    var xFormula = formula(xFormulaStr).parsed;
+                    var yFormula = formula(yFormulaStr).parsed;
+                    var rFormula = formula(rFormulaStr).parsed;
+                    var cFormula = formula(cFormulaStr).parsed;
+
+                    var axisFormulas = {
+                        x:{str: xFormulaStr, fct: xFormula},
+                        y:{str: yFormulaStr, fct: yFormula},
+                        r:{str: rFormulaStr, fct: rFormula},
+                        c:{str: cFormulaStr, fct: cFormula}
+                    };
+
+                    drawAllCharts(csv, csvSummary, selCols, axisFormulas);
+                });
+
+            var dimInputFocus = function() {
+                // focus is a private variable of this closure.
+                var focus = document.getElementById('input-' + strToID('X Axis'));
+                return function(elem) {
+                    //console.log(focus);
+                    if (elem != null && elem.tagName == 'INPUT') {
+                        focus = elem;
+                    };
+                    //console.log(focus);
+                    return focus;
+                };
+            };
+
+            var currInputFocus = dimInputFocus();
+            eachDimInput
+                .on("click", function() {return currInputFocus(this);});
+
+            var headings = [["col", "Column Name"],
+                            ["type", "Value Type"],
+                            ["distinctCount", "Number of Distinct Values"],
+                            ["missingCount", "Number of Missing Values"],
+                            ["sum", "Sum"],
+                            ["mean", "Mean"],
+                            ["std", "Standard Deviation"],
+                            ["min", "Minimum"],
+                            ["perc05", "5th Percentile"],
+                            ["perc25", "25th Percentile"],
+                            ["median", "Median"],
+                            ["perc75", "75th Percentile"],
+                            ["perc95", "95th Percentile"],
+                            ["max", "Maximum"]];
+
+            var colSummary = csvSummary[2].map(function(c,i) {
+                c["col"] = csvSummary[0][i];
+                return c;});
+            
+            var divSummary = d3.select("#summaryLayer")
+                .append("div")
+                .attr("id", "data-summary-div");
+
+            divSummary.append("p").append("strong")
+                .text("Data contains " + csvSummary[1] + " rows and " +
+                    (csvSummary[0].length) + " columns.");
+            divSummary.append("p").append("strong")
+                .text("Summary of Columns:");
+
+            var tableSummary = divSummary
+                .append("table");
+
+            tableSummary.style("width", "100%");
+            tableSummary.style("font-family", "Roboto");
+            tableSummary.style("font-weight", "400");
+            //tableSummary.attr("align", "center");
+
+            tableSummary
+                .append("thead")
+                .append("tr")
+                .selectAll("th")
+                //.data(["Dimension"].concat(csvSummary[0]))
+                .data(headings.map(function(h) {return h[1];}))
+                .enter()
+                .append("th")
+                .text(function(d) { return d;});
+            
+            var tableSummaryRows = tableSummary
+                .append("tbody")
+                .selectAll("tr")
+                .data(csvSummary[2])
+                .enter()
+                .append("tr");
+
+            tableSummaryRows
+                .selectAll("td")
+                //.data(function(d, i) {return con(headings[i][1], d);})
+                .data(function(d, i) {
+                    d.col=csvSummary[0][i];
+                    return headings.map(function(h) {return d[h[0]];});
+                })
+                .enter()
+                .append("td")
+                .append(function(d, i) {
+                    if (i==0) {
+                        return document.createElementNS("http://www.w3.org/1999/xhtml", "button");
+                    } else {
+                        return document.createElementNS("http://www.w3.org/1999/xhtml", "span");
+                    };
+                })
+                .text(function(d) {return showRounded(d);})
+                .attr("class", function(d, i) {
+                    if (i==0) {
+                        return 'SummaryButton';
+                    } else {
+                        return 'SummaryItem';
+                    }
+                })
+                .attr("align", "center")
+                .on("click", function(d,i) {
+                    if (i==0) {
+                        //var currBox = document.activeElement;
+                        var currBox = currInputFocus(null);
+                        if (currBox.selectionStart || currBox.selectionStart == '0') {
+                            var selStart = currBox.selectionStart;
+                            var selEnd = currBox.selectionEnd;
+                            currBox.value = currBox.value.substring(0, selStart)
+                                + ' [' + d + '] '
+                                + currBox.value.substring(selEnd, currBox.value.length);
+                        } else {
+                            currBox.value += ' [' + d + '] ';
+                        };
+                        currBox.selectionStart = currBox.value.length;
+                        //console.log("meow");
+                    };
+                });
+
+            /*
+            d3.select("#summaryLayer")
+                .append("div")
+                .attr("class","pageHandles")
+                .attr("onclick","toggleStack(event)");
+*/
+            
+            /*
+            var eachList = eachListDiv
+                .append("ul")
+                .attr("class", "stroll cards");
+            eachList
+                .selectAll("li")
+                .data(csvSummary[0])
+                .enter()
+                .append("li")
+                .text(identity);
+            eachList        // must bind after the li's are all entered.
+                .attr("id", function(d) {
+                    stroll.bind(this);
+                    return "ul-" + strToID(d);
+                });
+                */
+        }
+
+        function drawTriangles(csv, csvSummary) {
+
+            var cols = csvSummary[0];
+
+            var dcAllTriangles = d3.select("body")
+                .append("div")
+                .attr("id", "dc-all-triangles");
+
+            var csvCrossfilter = crossfilter(csv);
+            var all = csvCrossfilter.groupAll();
+
+            var dimAY = csvCrossfilter.dimension(function(d) {
+                return d["Accident Half Year"];
+            });
+
+                
+
+            var allEYs = d3.set(csv.map(pickCol("Entry Half Year"))).values();
+            
+            var groupAY = dimAY.group().reduce(
+                function(groupAccum, newEntry) {
+                    var entryYear = newEntry["Entry Half Year"]
+                    //++groupAccum.numEntries;
+                    groupAccum[entryYear].prem += +newEntry["Earned Premium"];
+                    groupAccum[entryYear].exposure += +newEntry["Number of Earned Vehicles"];
+                    groupAccum[entryYear].loss += +newEntry["Loss and Expense Amount"];
+                    groupAccum[entryYear].count += +newEntry["Claims Count"];
+                    return groupAccum;
+                },
+                function(groupAccum, newEntry) {
+                    var entryYear = newEntry["Entry Half Year"]
+                    //--groupAccum.numEntries;
+                    groupAccum[entryYear].prem -= +newEntry["Earned Premium"];
+                    groupAccum[entryYear].exposure -= +newEntry["Number of Earned Vehicles"];
+                    groupAccum[entryYear].loss -= +newEntry["Loss and Expense Amount"];
+                    groupAccum[entryYear].count -= +newEntry["Claims Count"];
+                    return groupAccum;
+                },
+                function() {
+                    var groupAccum = new Object;
+                    for (var i = 0; i<allEYs.length; i++) {
+                        groupAccum[allEYs[i]] = new Object;
+                        groupAccum[allEYs[i]].prem = 0;
+                        groupAccum[allEYs[i]].exposure = 0;
+                        groupAccum[allEYs[i]].loss = 0;
+                        groupAccum[allEYs[i]].count = 0;
+                    }
+                    return groupAccum;
+                });
+
+            console.log(groupAY.top(Infinity));
+
+        }
+
+        function drawAllCharts(csv, csvSummary, selCols, axisFormulas) {
+        //function drawAllCharts(csv) {
+
+            var cols = csvSummary[0];
+
+            var dcAllCharts = d3.select("#chartLayer")
+                .append("div")
+                .attr("id", "dc-all-chart-div");
+
+            var csvCrossfilter = crossfilter(csv);
+            //var all = csvCrossfilter.groupAll();
+
+            d3.timer(
+                //drawEachDistChart(0, cols, csvCrossfilter, csvSummary, dcAllCharts));
+                drawBubbleCharts(0, cols, csvCrossfilter, csvSummary, dcAllCharts, selCols, axisFormulas));
+            setTimeout(function() {
+                document.getElementById('summaryLayer')
+                    .parentNode.classList.add('stacked');
+                //document.getElementById('chartLayer').className += ' show';
+            },2000);
+
+        }
+
+        function drawEachDistChart(j, cols, csvCrossfilter, csvSummary, dcAllCharts) {
+
+            return function() {
+                col = cols[j];
+                colSummary = csvSummary[2][j];
+                console.log(col);
+
+                if (colSummary.distinctCount > 1) {
+                    var t = new Date().getTime();
+                    var groupFunc = dimensionBinning(   colSummary.type,
+                                                        colSummary.distinctCount,
+                                                        colSummary.min,
+                                                        colSummary.perc05,
+                                                        colSummary.perc25,
+                                                        colSummary.median,
+                                                        colSummary.perc75,
+                                                        colSummary.perc95);
+
+                    console.log("meow binning takes " + (new Date().getTime() - t));
+                    t = new Date().getTime();
+                    var thisDim = csvCrossfilter.dimension(function(d) {
+                            return (colSummary.type != "text") ? +d[col] : d[col];
+                        });
+
+                    console.log("meow dim takes " + (new Date().getTime() - t));
+                    t = new Date().getTime();
+                    var thisDimGroup = thisDim.group(groupFunc);
+                    console.log("meow group takes " + (new Date().getTime() - t));
+                    var thisChartType = selectDistChartType(colSummary.type,
+                                                        colSummary.distinctCount);
+
+                    var thisChartDiv = dcAllCharts
+                        .append("div")
+                        .style("float","none");
+
+                    thisChartDiv
+                        .attr("id", ("rawDistribution-" + strToID(col)));
+
+                /*
+                    thisChartDiv.append("a")
+                        .attr("class", "reset")
+                        .attr("href", "javascript: dc.filterAll();")
+                        .style("display", "none")
+                        .text("reset");
+                    */
+                    var marginA = {top:10, right:15, bottom:30, left:55}
+                    t = new Date().getTime();
+                    if (thisChartType == "barChart") {
+                        var colMin = colSummary.min;
+                        var col5p = colSummary.perc05;
+                        var col25p = colSummary.perc25;
+                        var col75p = colSummary.perc75;
+                        var col95p = colSummary.perc95;
+                        var colMax = colSummary.max;
+
+                        var thisChart = dc
+                            .barChart('#rawDistribution-' + strToID(col), 'dc-chart')
+                            .width(500)
+                            .height(240)
+                            .margins(marginA)
+                            .dimension(thisDim)
+                            .group(thisDimGroup)
+                            .elasticY(true)
+                            .xAxisLabel(col)
+                            .yAxisLabel("Number of Row Entries");
+
+                        if (colSummary.type=="text") {
+                        //if (["text", "constant"].indexOf(colSummary.type) >= 0) {
+                            thisChart
+                                .x(d3.scale.ordinal())
+                                .xUnits(dc.units.ordinal)
+                                .brushOn(false);
+                        } else {
+                            var xBounds;
+                            if (col25p!=col75p && 10*(col75p-col25p+1)<(col95p-col5p+1)) {
+                                xBounds = [col25p-0.5, col75p];
+                            } else if (col5p!=col95p && 10*(col95p-col5p+1)<(colMax-colMin+1)) {
+                                xBounds = [col5p-0.5, col95p];
+                            } else if (colMin!=colMax) {
+                                xBounds = [colMin-0.5, colMax];
+                            } else {    // shouldn't encounter this cuz no constant goes here.
+                                xBounds = [colMin-1, colMax+1];
+                            };
+
+                            console.log(xBounds);
+                            thisChart
+                                .x(d3.scale.linear().domain(xBounds))
+                                //.elasticX(true)   // turning this on kills the speed.
+                                .centerBar(true)
+                                .round(dc.round.floor)
+                                .alwaysUseRounding(true)
+                                .renderHorizontalGridLines(true);
+                        }
+
+                    } else if (thisChartType == "rowChart") {
+                        var thisChart = dc
+                            .rowChart('#rawDistribution-' + strToID(col), 'dc-chart')
+                            .width(500)
+                            .height(240)
+                            .margins(marginA)
+                            .dimension(thisDim)
+                            .group(thisDimGroup)
+                            .colors(d3.scale.category20b())
+                            .elasticX(true)
+                            //.xAxisLabel("Number of Row Entries")
+                            .title(function (d) { return d.value;});
+
+                    };
+
+                    thisChart.render();
+
+                    console.log("meow render takes " + (new Date().getTime() - t));
+                };
+
+                j++;
+                if (j<cols.length) {
+                    d3.timer(
+                        drawEachDistChart(j, cols, csvCrossfilter, csvSummary, dcAllCharts),200);
+                };
+
+
+                return true;
+            };
+        }
+
+        function rollingVariance(oldWeight, oldMean, oldVariance, newValue, newWeight) {
+            var newTotWeight = oldWeight + newWeight;
+            if (newWeight >= 0) {
+                if (oldWeight <=1) {
+                    return 0;
+                } else {
+                    return oldVariance*(oldWeight-1)/(newTotWeight-1) +
+                            Math.pow((safeDiv(newValue,newWeight)-oldMean),2)/newTotWeight;
+                };
+            } else {
+                if (newTotWeight <=1) {
+                    return 0;
+                } else {
+                    return oldVariance*(oldWeight-1)/(newTotWeight-1) -
+                            Math.pow((safeDiv(newValue,newWeight)-oldMean),2)/newTotWeight;
+                };
+            };
+
+        }
+
+        function drawBubbleCharts(j, cols, csvCrossfilter, csvSummary, dcAllCharts, selCols, axisFormulas) {
+
+            return function() {
+                /*
+                signalNames = {
+                    EP:"Earned Premium",
+                    EE:"Number of Earned Vehicles",
+                    RL:"Loss and Expense Amount",
+                    CC:"Claims Count"
+                };
+                */
+                col = cols[j];
+                colSummary = csvSummary[2][j];
+                console.log(col);
+
+                if (colSummary.distinctCount > 1 && colSummary.distinctCount < 150 ) {
+                    t = new Date().getTime();
+                    var thisDim = csvCrossfilter.dimension(function(d) {
+                            return (colSummary.type != "text") ? +d[col] : d[col];
+                        });
+                    console.log("meow dim takes " + (new Date().getTime() - t));
+                    t = new Date().getTime();
+                    var thisDimGroup = thisDim.group().reduce(
+                        function(p,v) {
+                            ++p.rowCount;
+                            /*
+                            p.varAvgEP = rollingVariance(p.EE, p.AvgEP, p.varAvgEP,
+                                                        +v[signalNames.EP], +v[signalNames.EE]);
+                            p.varLC = rollingVariance(p.EE, p.LC, p.varLC,
+                                                        +v[signalNames.RL], +v[signalNames.EE]);
+                            p.varLR = rollingVariance(p.EP, p.LR, p.varLR,
+                                                        +v[signalNames.RL], +v[signalNames.EP]);
+                            p.varSvt = rollingVariance(p.CC, p.Svt, p.varSvt,
+                                                        +v[signalNames.RL], +v[signalNames.CC]);
+                            p.varFrq = rollingVariance(p.EE, p.Frq, p.varFrq,
+                                                        +v[signalNames.CC], +v[signalNames.EE]);
+                            p.EP += +v[signalNames.EP];
+                            p.EE += +v[signalNames.EE];
+                            p.RL += +v[signalNames.RL];
+                            p.CC += +v[signalNames.CC];
+                            p.AvgEP = safeDiv(p.EP,p.EE);
+                            p.LC = safeDiv(p.RL,p.EE);
+                            p.LR = safeDiv(p.RL,p.EP);
+                            p.Svt = safeDiv(p.RL,p.CC);
+                            p.Frq = safeDiv(p.CC,p.EE);
+                            */
+
+                            for (var i=0; i<selCols.length; i++) {
+                                if (selCols[i] != 'rowCount') p[selCols[i]] += +v[selCols[i]];
+                            }
+
+                            p.xDim = axisFormulas.x.fct(p);
+                            p.yDim = axisFormulas.y.fct(p);
+                            p.rDim = axisFormulas.r.fct(p);
+                            p.cDim = axisFormulas.c.fct(p);
+
+                            return p;
+                        },
+                        function(p,v) {
+                            --p.rowCount;
+                            /*
+                            p.varAvgEP = rollingVariance(p.EE, p.AvgEP, p.varAvgEP,
+                                                        +v[signalNames.EP], +v[signalNames.EE]);
+                            p.varLC = rollingVariance(p.EE, p.LC, p.varLC,
+                                                        +v[signalNames.RL], +v[signalNames.EE]);
+                            p.varLR = rollingVariance(p.EP, p.LR, p.varLR,
+                                                        +v[signalNames.RL], +v[signalNames.EP]);
+                            p.varSvt = rollingVariance(p.CC, p.Svt, p.varSvt,
+                                                        +v[signalNames.RL], +v[signalNames.CC]);
+                            p.varFrq = rollingVariance(p.EE, p.Frq, p.varFrq,
+                                                        +v[signalNames.CC], +v[signalNames.EE]);
+                            p.EP -= +v[signalNames.EP];
+                            p.EE -= +v[signalNames.EE];
+                            p.RL -= +v[signalNames.RL];
+                            p.CC -= +v[signalNames.CC];
+                            p.AvgEP = safeDiv(p.EP,p.EE);
+                            p.LC = safeDiv(p.RL,p.EE);
+                            p.LR = safeDiv(p.RL,p.EP);
+                            p.Svt = safeDiv(p.RL,p.CC);
+                            p.Frq = safeDiv(p.CC,p.EE);
+                            */
+
+                            for (var i=0; i<selCols.length; i++) {
+                                if (selCols[i] != 'rowCount') p[selCols[i]] -= +v[selCols[i]];
+                            }
+
+                            p.xDim = axisFormulas.x.fct(p);
+                            p.yDim = axisFormulas.y.fct(p);
+                            p.rDim = axisFormulas.r.fct(p);
+                            p.cDim = axisFormulas.c.fct(p);
+
+                            return p;
+                        },
+                        function() {
+                            var p = {
+                                rowCount : 0,
+                                xDim : 0,
+                                yDim : 0,
+                                rDim : 0,
+                                cDim : 0,
+                            /*
+                                varAvgEP : 0,
+                                varLC : 0,
+                                varLR : 0,
+                                varSvt : 0,
+                                varFrq : 0,
+                                EP : 0,
+                                EE : 0,
+                                RL : 0,
+                                CC : 0,
+                                AvgEP : 0,
+                                LC : 0,
+                                LR : 0,
+                                Svt : 0,
+                                Frq : 0
+                                */
+                            };
+                            for (var i=0; i<selCols.length; i++) {
+                                p[selCols[i]] = 0;
+                            }
+                            return p;
+                        });
+
+                    console.log("meow group takes " + (new Date().getTime() - t));
+                    console.log(thisDimGroup.top(Infinity));
+
+                    var axisMaxMin = ["xDim", "yDim", "rDim", "cDim"]
+                        .map(function(ax) {
+                            var vs = thisDimGroup.top(Infinity)
+                                .map(function(d) {return d.value[ax]});
+                            return [d3.min(vs), d3.max(vs)];
+                        });
+
+                    var thisChartType = "bubbleChart"
+
+                    var thisChartDiv = dcAllCharts
+                        .append("div")
+                        .style("float","none");
+
+                    thisChartDiv
+                        .attr("id", ("bubbleScatter-" + strToID(col)));
+                    thisChartDiv.append("h3").text(col)//.style("font-size","2em");
+
+                /*
+                    thisChartDiv.append("a")
+                        .attr("class", "reset")
+                        .attr("href", "javascript: dc.filterAll();")
+                        .style("display", "none")
+                        .text("reset");
+                    */
+                    var marginA = {top:10, right:15, bottom:30, left:55}
+                    t = new Date().getTime();
+                    var thisBubbleChart = dc.bubbleChart('#bubbleScatter-' + strToID(col));
+                    thisBubbleChart
+                        .width(1000)
+                        .height(400)
+                        .transitionDuration(1500)
+                        .margins(marginA)
+                        .dimension(thisDim)
+                        .group(thisDimGroup)
+                        //.colors(colorbrewer.RdYlGn[9])
+                        .colorAccessor(function(d) {
+                            //return d.value.Svt;})
+                            return d.value.cDim;})
+                        .keyAccessor(function(d) {
+                            //return d.value.AvgEP;})
+                            return d.value.xDim;})
+                        .valueAccessor(function(d) {
+                            //return d.value.LC;})
+                            return d.value.yDim;})
+                        .radiusValueAccessor(function(d) {
+                            //return Math.sqrt(d.value.varLR);})
+                            return d.value.rDim;})
+                        .maxBubbleRelativeSize(0.1)
+                        .x(d3.scale.linear().domain(axisMaxMin[0]))
+                        .y(d3.scale.linear().domain(axisMaxMin[1]))
+                        .r(d3.scale.linear().domain([0, 1.5*axisMaxMin[2][1]]))
+                        .colorDomain(axisMaxMin[3])
+                        .elasticX(true)
+                        .elasticY(true)
+                        .xAxisPadding(axisMaxMin[0][1]*0.1)
+                        .yAxisPadding(axisMaxMin[1][1]*0.1)
+                        .renderHorizontalGridLines(true)
+                        .renderVerticalGridLines(true)
+                        .xAxisLabel(axisFormulas.x.str)
+                        .yAxisLabel(axisFormulas.y.str)
+                        .renderLabel(true)
+                        .label(function (d) { return d.key;});
+
+                    thisBubbleChart.render();
+
+                    console.log("meow render takes " + (new Date().getTime() - t));
+                };
+
+                j++;
+                if (j<cols.length) {
+                    d3.timer(
+                        drawBubbleCharts(j, cols, csvCrossfilter, csvSummary, dcAllCharts, selCols, axisFormulas),200);
+                };
+
+                return true;
+            };
+        }
+
+        function selectDistChartType (colType, distinctCount) {
+            
+            //if ((colType != "text") || (colType == "text" && distinctCount>=20)) {
+            //if (((colType != "text") && (distinctCount>=15)) || ) {
+            if (distinctCount >= 13) {
+                return "barChart";
+            } else {
+                return "rowChart";
+            };
+        }
+
+        function dimensionBinning (colType, distinctCount,
+                                        colMin, col5p, col25p, col75p, col95p, colMax) {
+
+            if ((colType != "text") && (distinctCount>128)) {
+                var s = Math.log(col75p - col25p+1)/Math.log(10);
+                var r=1;
+                if (s<1) {
+                    r=1;
+                } else {
+                    r = Math.pow(10,s);
+                };
+
+                return (function(d) {return ~~(d/r);});
+            } else if ((colType != "text") && (distinctCount<=128)) {
+                return (function(d) {return d;});
+            } else {
+                return (function(d) {return d;});
+            };
+        }
+                
+/*  initial exercise "big graph"
+
+            var dataByMY = d3   .nest()
+                                .key(function(d) {return +d.MY;})
+                                .rollup(function(d) {
+                                    var sums = [
+                                        d3.sum(d, function(r) {return +r.LOSS;}),
+                                        d3.sum(d, function(r) {return +r.COUNT;}),
+                                        d3.sum(d, function(r) {return +r.EP;}),
+                                        d3.sum(d, function(r) {return +r.EEXP;})];
+                                    return {
+                                        "LOSS_MY":  sums[0],
+                                        "COUNT_MY": sums[1],
+                                        "EP_MY":    sums[2],
+                                        "EEXP_MY":  sums[3],
+                                        "LC_MY":  ((sums[3]==0) ? 0 : sums[0]/sums[3]),
+                                        "AEP_MY":  ((sums[3]==0) ? 0 : sums[2]/sums[3]),
+                                        "SEVERITY_MY": ((sums[1]==0) ? 0 : sums[0]/sums[1])
+                                    };
+                                })
+                                .entries(csv);
+                                //.map(csv, d3.map);
+
+            var margin = {top: 20, right: 40, bottom: 20, left: 40};
+            var w = 1500 - margin.left - margin.right;
+            var h = 700 - margin.top - margin.bottom;
+            var rMax = 30;
+            
+            //Create SVG element
+            var svg = d3.select("body")
+                        .append("svg")
+                        .attr("width", w + margin.left + margin.right)
+                        .attr("height", h + margin.top + margin.bottom)
+                        .append("g")
+                        .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            //console.log(dataByMY);
+    //                var v = d3.extent(dataByMY, function(d,i) {return d.values.LC_MY});
+            var v = d3.extent(dataByMY, function(d,i) {return +d.key});
+            //console.log(v);
+
+            var xScale = d3.scale   .sqrt()
+                                    .domain(d3.extent(dataByMY, function(d,i) {
+                                                        return d.values.AEP_MY;}))
+                                    .range([0,w])
+                                    .nice();
+
+            var yScale = d3.scale   .sqrt()
+                                    .domain(d3.extent(dataByMY, function(d,i) {
+                                                        return d.values.LC_MY;}))
+                                    .range([h,0]);
+
+            var rScale = d3.scale   .linear()
+                                    .domain([0,d3.max(dataByMY, function(d,i) {
+                                                        return d.values.LOSS_MY;})])
+                                    .range([5,rMax]);
+
+            var colorScale = d3.scale.linear()
+                .domain([d3.min(dataByMY, function(d,i) {return d.key;}),
+                    2000,
+                    d3.max(dataByMY, function(d,i) {return d.key;})])
+                .range(["green", "yellow", "aqua"])
+
+            var circles = svg   .selectAll("circles")
+                                .data(dataByMY)
+                                .enter()
+                                .append("circle");
+            
+            circles .attr({ cx: function (d,i) {
+                                    return xScale(d.values.AEP_MY);
+                                },
+                            cy: function (d,i) {
+                                    return yScale(d.values.LC_MY);
+                                },
+                            r: function (d,i) {
+                                    return rScale(Math.abs(d.values.LOSS_MY));
+                                },
+                            fill: function (d,i) {
+                                return colorScale(d.key);
+                                },
+                            //fill: function (d,i) {return "lightgray"},
+                            opacity: 0.3,
+                            //stroke: "lightgray"
+                            stroke: function (d,i) {
+                                return d3.rgb(colorScale(d.key)).darker(2);
+                                }
+                        })
+                    .attr("stroke-width", function (d,i) {
+                        return d3.select(this).attr("r")/d.values.COUNT_MY;
+                        })
+                    .attr("stroke-opacity", "0.9");
+
+            var labels = svg
+                .selectAll("text")
+                .data(dataByMY)
+                .enter()
+                .append("text");
+
+            labels
+                .text(function(d) {return d.key; })
+                .attr("font-family", "sans-serif")
+                .attr("font-size", "10px")
+                .attr("x", function (d,i) {
+                                    return xScale(d.values.AEP_MY)+5;
+                                })
+                .attr("y", function (d,i) {
+                                    return yScale(d.values.LC_MY);
+                                })
+                .attr("fill", "pink");
+
+            var xAxis = d3.svg
+                .axis()
+                .scale(xScale)
+                .orient("bottom")
+                .ticks(10);
+            
+            svg
+                .append("g")
+                .attr("class", "axis")
+                .attr("transform", "translate(0," + (h) + ")")
+                .call(xAxis);
+
+            var yAxis = d3.svg
+                .axis()
+                .scale(yScale)
+                .orient("left")
+                .ticks(10);
+            
+            svg
+                .append("g")
+                .attr("class", "axis")
+                .attr("transform", "translate(0,0)")
+                .call(yAxis);
+
+        */
+
+
+        </script>
+    </body>
+</html>
