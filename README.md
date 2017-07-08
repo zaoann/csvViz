@@ -3,7 +3,7 @@ An in-browser general csv dataset visualizer by plotting bubble plots that inter
 
 Demo Page: https://zaoann.github.io/csvViz
 
-This is a proof of concept that's somewhat demo-able. There's a lot of bugs and issues, but I just haven't been able to justify investing more time into it after it reached this stage.
+This is a proof of concept that's somewhat demo-able. There will be a lot of bugs and issues for general use.
 
 To use:
 
