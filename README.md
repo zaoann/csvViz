@@ -1,6 +1,8 @@
 # csvViz
 An in-browser general csv dataset visualizer by plotting bubble plots that interactively applies cross filter. Written in JavaScript using d3.js and its related libraries.
 
+Demo Page: https://zaoann.github.io/csvViz
+
 This is a proof of concept that's somewhat demo-able. There's a lot of bugs and issues, but I just haven't been able to justify investing more time into it after it reached this stage.
 
 To use:
